@@ -1,0 +1,17 @@
+services:
+  wotm:
+    image: ghcr.io/vhvy/wotm:${WOTM_TAG:-latest}
+    ports:
+      - "${WOTM_PORT:-8080}:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      TZ: Asia/Shanghai
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777

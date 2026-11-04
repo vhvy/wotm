@@ -1,0 +1,21 @@
+services:
+  wotm:
+    image: ${WOTM_IMAGE:-wotm:local}
+    build:
+      context: .
+      args:
+        VERSION: ${WOTM_VERSION:-dev}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777

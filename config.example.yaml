@@ -1,0 +1,6 @@
+version: 1
+web:
+  username: admin
+  password: change-me
+keys: []
+hosts: []
