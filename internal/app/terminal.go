@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net"
@@ -118,9 +119,15 @@ func (a *App) terminal(w http.ResponseWriter, r *http.Request) {
 		return hostKeyError
 	}}
 	address := net.JoinHostPort(host.Address, strconv.Itoa(host.Port))
-	nc, err := net.DialTimeout("tcp", address, 10*time.Second)
+	dialContext, cancelDial := context.WithTimeout(r.Context(), 10*time.Second)
+	nc, err := dialHost(dialContext, c, host)
+	cancelDial()
 	if err != nil {
-		_ = socket.event(wire{Type: "error", Message: "无法连接主机，请检查地址、端口和网络"})
+		message := "无法连接主机，请检查地址、端口和网络"
+		if host.ProxyID != "" {
+			message = "SOCKS5 代理连接失败，请检查代理地址、认证信息、目标地址及代理网络"
+		}
+		_ = socket.event(wire{Type: "error", Message: message})
 		return
 	}
 	defer nc.Close()

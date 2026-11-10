@@ -3,4 +3,5 @@ web:
   username: admin
   password: change-me
 keys: []
+proxies: [] # SOCKS5 代理列表，可在 Web 中添加；配置示例见 README。
 hosts: []

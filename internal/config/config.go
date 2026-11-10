@@ -36,6 +36,14 @@ type Auth struct {
 	Mode  string `yaml:"mode" json:"mode"`
 	KeyID string `yaml:"key_id,omitempty" json:"key_id,omitempty"`
 }
+type Proxy struct {
+	ID       string `yaml:"id" json:"id"`
+	Name     string `yaml:"name" json:"name"`
+	Address  string `yaml:"address" json:"address"`
+	Port     int    `yaml:"port" json:"port"`
+	Username string `yaml:"username,omitempty" json:"username,omitempty"`
+	Password string `yaml:"password,omitempty" json:"-"`
+}
 type Host struct {
 	ID             string `yaml:"id" json:"id"`
 	Name           string `yaml:"name" json:"name"`
@@ -43,6 +51,7 @@ type Host struct {
 	Port           int    `yaml:"port" json:"port"`
 	Username       string `yaml:"username" json:"username"`
 	Auth           Auth   `yaml:"auth" json:"auth"`
+	ProxyID        string `yaml:"proxy_id,omitempty" json:"proxy_id,omitempty"`
 	TrustedHostKey string `yaml:"trusted_host_key,omitempty" json:"trusted_host_key,omitempty"`
 	Group          string `yaml:"group,omitempty" json:"group,omitempty"`
 	Remark         string `yaml:"remark,omitempty" json:"remark,omitempty"`
@@ -51,6 +60,7 @@ type Config struct {
 	Version int         `yaml:"version" json:"version"`
 	Web     Credentials `yaml:"web" json:"web"`
 	Keys    []Key       `yaml:"keys" json:"keys"`
+	Proxies []Proxy     `yaml:"proxies" json:"proxies"`
 	Hosts   []Host      `yaml:"hosts" json:"hosts"`
 }
 
@@ -89,12 +99,28 @@ func Validate(c Config) error {
 		}
 		keys[k.ID] = true
 	}
+	proxies := map[string]bool{}
+	for _, p := range c.Proxies {
+		if !validID(p.ID) || proxies[p.ID] || strings.TrimSpace(p.Name) == "" {
+			return errors.New("代理 ID 必须为 1–64 位字母、数字、下划线或连字符，且不能重复；名称不能为空")
+		}
+		if p.Address == "" || strings.ContainsAny(p.Address, " /\t\r\n\x00") || p.Port < 1 || p.Port > 65535 {
+			return fmt.Errorf("代理 %q: 地址或端口无效", p.Name)
+		}
+		if (p.Username == "") != (p.Password == "") || len(p.Username) > 255 || len(p.Password) > 255 {
+			return fmt.Errorf("代理 %q: 用户名和密码需同时填写，且分别不能超过 255 字节", p.Name)
+		}
+		proxies[p.ID] = true
+	}
 	hosts := map[string]bool{}
 	for _, h := range c.Hosts {
 		if !validID(h.ID) || hosts[h.ID] || strings.TrimSpace(h.Name) == "" {
 			return errors.New("主机 ID 必须为 1–64 位字母、数字、下划线或连字符，且不能重复；名称不能为空")
 		}
 		hosts[h.ID] = true
+		if h.ProxyID != "" && !proxies[h.ProxyID] {
+			return fmt.Errorf("主机 %q 引用了不存在的 SOCKS5 代理", h.Name)
+		}
 		if h.Address == "" || strings.ContainsAny(h.Address, " /\t\r\n") || strings.TrimSpace(h.Username) == "" || h.Port < 1 || h.Port > 65535 {
 			return fmt.Errorf("主机 %q: 地址、用户名或端口无效", h.Name)
 		}
@@ -149,6 +175,9 @@ func decode(b []byte) (Config, error) {
 	if c.Hosts == nil {
 		c.Hosts = []Host{}
 	}
+	if c.Proxies == nil {
+		c.Proxies = []Proxy{}
+	}
 	return c, Validate(c)
 }
 func digest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
@@ -197,6 +226,7 @@ func Open(path string) (*Store, error) {
 func clone(c Config) Config {
 	c.Keys = append([]Key{}, c.Keys...)
 	c.Hosts = append([]Host{}, c.Hosts...)
+	c.Proxies = append([]Proxy{}, c.Proxies...)
 	return c
 }
 func (s *Store) refreshLocked() {
@@ -300,7 +330,7 @@ func Initialize(path string) error {
 	if _, err := rand.Read(raw); err != nil {
 		return err
 	}
-	c := Config{Version: 1, Web: Credentials{Username: "admin", Password: hex.EncodeToString(raw)}, Keys: []Key{}, Hosts: []Host{}}
+	c := Config{Version: 1, Web: Credentials{Username: "admin", Password: hex.EncodeToString(raw)}, Keys: []Key{}, Proxies: []Proxy{}, Hosts: []Host{}}
 	b, err := yaml.Marshal(c)
 	if err != nil {
 		return err

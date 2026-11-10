@@ -13,6 +13,7 @@ import {
   FolderOpen,
   KeyRound,
   LogOut,
+  Network,
   Plus,
   Search,
   Server,
@@ -23,17 +24,19 @@ import {
   X,
 } from "lucide-react";
 import { api, APIError, message } from "./types";
-import type { Host, Snapshot, SSHKey } from "./types";
+import type { Host, Snapshot, SSHKey, SOCKSProxy } from "./types";
+import { ProxyForm, ProxyList } from "./ProxiesPanel";
 import { TerminalPane } from "./TerminalPane";
 import { startConfigSync } from "./configSync";
 import "./style.css";
 import "./transfers.css";
 
-type Page = "hosts" | "keys" | "settings";
+type Page = "hosts" | "keys" | "proxies" | "settings";
 type Tab = { id: string; host: Host; password: string; revision: string };
 type ModalState =
   | { type: "host"; host?: Host; revision: string }
   | { type: "key"; key?: SSHKey; revision: string }
+  | { type: "proxy"; proxy?: SOCKSProxy; revision: string }
   | { type: "connect"; host: Host; revision: string };
 
 // getRandomValues also works on ordinary intranet HTTP origins.
@@ -203,11 +206,13 @@ function Login({ onLogin }: { onLogin: (s: Snapshot) => void }) {
 function HostForm({
   host,
   keys,
+  proxies,
   onSubmit,
   onClose,
 }: {
   host?: Host;
   keys: SSHKey[];
+  proxies: SOCKSProxy[];
   onSubmit: (h: Host) => Promise<void>;
   onClose: () => void;
 }) {
@@ -330,6 +335,20 @@ function HostForm({
           </select>
         </label>
       )}
+      <label>
+        连接代理
+        <select
+          value={value.proxy_id || ""}
+          onChange={(event) => field("proxy_id", event.target.value)}
+        >
+          <option value="">直连（不使用代理）</option>
+          {proxies.map((proxy) => (
+            <option key={proxy.id} value={proxy.id}>
+              {proxy.name} · SOCKS5
+            </option>
+          ))}
+        </select>
+      </label>
       <label>
         备注
         <textarea
@@ -714,8 +733,16 @@ function Workspace({
     setTabs((prev) => prev.filter((t) => t.id !== id));
     if (active === id) setActive("");
   }
-  async function remove(type: "hosts" | "keys", id: string, name: string) {
-    if (!confirm(`确定删除${type === "hosts" ? "主机" : "密钥"}「${name}」？`))
+  async function remove(
+    type: "hosts" | "keys" | "proxies",
+    id: string,
+    name: string,
+  ) {
+    if (
+      !confirm(
+        `确定删除${type === "hosts" ? "主机" : type === "keys" ? "密钥" : "代理"}「${name}」？`,
+      )
+    )
       return;
     try {
       setSnapshot(
@@ -748,7 +775,13 @@ function Workspace({
     }
   }
   const title =
-    page === "hosts" ? "主机" : page === "keys" ? "SSH 密钥" : "设置";
+    page === "hosts"
+      ? "主机"
+      : page === "keys"
+        ? "SSH 密钥"
+        : page === "proxies"
+          ? "SOCKS5 代理"
+          : "设置";
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -775,6 +808,14 @@ function Workspace({
           >
             <KeyRound size={18} />
             SSH 密钥<span className="nav-count">{snapshot.keys.length}</span>
+          </button>
+          <button
+            className={!active && page === "proxies" ? "active" : ""}
+            onClick={() => navigate("proxies")}
+          >
+            <Network size={18} />
+            SOCKS5 代理
+            <span className="nav-count">{snapshot.proxies.length}</span>
           </button>
         </nav>
         <div className="sidebar-bottom">
@@ -880,7 +921,9 @@ function Workspace({
                   ? "YOUR INFRASTRUCTURE"
                   : page === "keys"
                     ? "ACCESS CREDENTIALS"
-                    : "WORKSPACE PREFERENCES"}
+                    : page === "proxies"
+                      ? "NETWORK CONNECTIONS"
+                      : "WORKSPACE PREFERENCES"}
               </span>
               <h1>
                 {title}
@@ -889,7 +932,9 @@ function Workspace({
                     ? snapshot.hosts.length
                     : page === "keys"
                       ? snapshot.keys.length
-                      : ""}
+                      : page === "proxies"
+                        ? snapshot.proxies.length
+                        : ""}
                 </span>
               </h1>
               <p>
@@ -897,7 +942,9 @@ function Workspace({
                   ? "每一台主机，都在这里。选择一台，开始连接。"
                   : page === "keys"
                     ? "统一管理访问凭据，轻松连接你的 Linux 主机。"
-                    : "管理工作台的登录凭据与配置。"}
+                    : page === "proxies"
+                      ? "为指定主机选择代理，连接不同网络中的服务器。"
+                      : "管理工作台的登录凭据与配置。"}
               </p>
             </div>
             {page !== "settings" && (
@@ -907,12 +954,18 @@ function Workspace({
                   setModal(
                     page === "hosts"
                       ? { type: "host", revision: snapshot.revision }
-                      : { type: "key", revision: snapshot.revision },
+                      : page === "proxies"
+                        ? { type: "proxy", revision: snapshot.revision }
+                        : { type: "key", revision: snapshot.revision },
                   )
                 }
               >
                 <Plus size={17} />
-                {page === "hosts" ? "添加主机" : "添加密钥"}
+                {page === "hosts"
+                  ? "添加主机"
+                  : page === "proxies"
+                    ? "添加代理"
+                    : "添加密钥"}
               </button>
             )}
           </div>
@@ -1021,6 +1074,13 @@ function Workspace({
                       <div className="host-meta">
                         <span>{host.group || "未分组"}</span>
                         <span>{host.username}</span>
+                        {host.proxy_id && (
+                          <span title="通过 SOCKS5 代理连接">
+                            {snapshot.proxies.find(
+                              (proxy) => proxy.id === host.proxy_id,
+                            )?.name || "SOCKS5"}
+                          </span>
+                        )}
                       </div>
                       <p className="host-remark">
                         {host.remark || "准备就绪，随时连接。"}
@@ -1195,7 +1255,7 @@ function Workspace({
                 <FolderOpen size={24} />
                 <h3>一份配置，所有连接</h3>
                 <p>
-                  主机、密钥与登录凭据统一保存在 YAML 文件。支持通过 Web
+                  主机、密钥、代理与登录凭据统一保存在 YAML 文件。支持通过 Web
                   或手动编辑维护。
                 </p>
                 <dl>
@@ -1212,6 +1272,18 @@ function Workspace({
                 </p>
               </div>
             </div>
+          )}
+          {page === "proxies" && (
+            <ProxyList
+              proxies={snapshot.proxies}
+              hosts={snapshot.hosts}
+              search={search}
+              onSearch={setSearch}
+              onEdit={(proxy) =>
+                setModal({ type: "proxy", proxy, revision: snapshot.revision })
+              }
+              onDelete={(proxy) => void remove("proxies", proxy.id, proxy.name)}
+            />
           )}
           <footer className="page-footer">
             <span>
@@ -1277,14 +1349,20 @@ function Workspace({
                 ? modal.key
                   ? "重命名密钥"
                   : "添加 SSH 密钥"
-                : "连接主机"
+                : modal.type === "proxy"
+                  ? modal.proxy
+                    ? "编辑 SOCKS5 代理"
+                    : "添加 SOCKS5 代理"
+                  : "连接主机"
           }
           subtitle={
             modal.type === "host"
               ? "填写 Linux 主机的 SSH 连接信息。"
               : modal.type === "key"
                 ? "管理用于主机认证的 SSH 密钥。"
-                : "输入本次连接使用的 SSH 密码。"
+                : modal.type === "proxy"
+                  ? "填写代理地址和可选的认证信息。"
+                  : "输入本次连接使用的 SSH 密码。"
           }
           onClose={() => setModal(null)}
         >
@@ -1292,6 +1370,7 @@ function Workspace({
             <HostForm
               host={modal.host}
               keys={snapshot.keys}
+              proxies={snapshot.proxies}
               onClose={() => setModal(null)}
               onSubmit={async (host) => {
                 const result = await api(
@@ -1319,6 +1398,22 @@ function Workspace({
                 setSnapshot(result);
                 setModal(null);
                 notify(modal.key ? "名称已保存" : "密钥已添加，可以复制公钥了");
+              }}
+            />
+          ) : modal.type === "proxy" ? (
+            <ProxyForm
+              proxy={modal.proxy}
+              onClose={() => setModal(null)}
+              onSubmit={async (value) => {
+                const result = await api(
+                  `/proxies${modal.proxy ? `/${modal.proxy.id}` : ""}`,
+                  modal.proxy ? "PUT" : "POST",
+                  value,
+                  modal.revision,
+                );
+                setSnapshot(result);
+                setModal(null);
+                notify("代理已保存");
               }}
             />
           ) : (

@@ -52,6 +52,9 @@ func New(store *config.Store, assets fs.FS, version string) http.Handler {
 	mux.Handle("POST /api/keys", a.require(http.HandlerFunc(a.createKey)))
 	mux.Handle("PUT /api/keys/{id}", a.require(http.HandlerFunc(a.renameKey)))
 	mux.Handle("DELETE /api/keys/{id}", a.require(http.HandlerFunc(a.deleteKey)))
+	mux.Handle("POST /api/proxies", a.require(http.HandlerFunc(a.saveProxy)))
+	mux.Handle("PUT /api/proxies/{id}", a.require(http.HandlerFunc(a.saveProxy)))
+	mux.Handle("DELETE /api/proxies/{id}", a.require(http.HandlerFunc(a.deleteProxy)))
 	mux.Handle("POST /api/hosts", a.require(http.HandlerFunc(a.saveHost)))
 	mux.Handle("PUT /api/hosts/{id}", a.require(http.HandlerFunc(a.saveHost)))
 	mux.Handle("DELETE /api/hosts/{id}", a.require(http.HandlerFunc(a.deleteHost)))
@@ -233,7 +236,11 @@ func (a *App) snapshot(w http.ResponseWriter, r *http.Request) {
 		p := s.PublicKey()
 		keys = append(keys, keyView{k.ID, k.Name, p.Type(), ssh.FingerprintSHA256(p), strings.TrimSpace(string(ssh.MarshalAuthorizedKey(p)))})
 	}
-	writeJSON(w, 200, map[string]any{"revision": rev, "load_error": loadError, "username": c.Web.Username, "keys": keys, "hosts": c.Hosts, "version": a.version})
+	proxies := make([]proxyView, 0, len(c.Proxies))
+	for _, p := range c.Proxies {
+		proxies = append(proxies, proxyView{Proxy: p, HasPassword: p.Password != ""})
+	}
+	writeJSON(w, 200, map[string]any{"revision": rev, "load_error": loadError, "username": c.Web.Username, "keys": keys, "proxies": proxies, "hosts": c.Hosts, "version": a.version})
 }
 func (a *App) update(w http.ResponseWriter, r *http.Request, f func(*config.Config) error) {
 	if err := a.store.Update(strings.Trim(r.Header.Get("If-Match"), "\""), f); err != nil {

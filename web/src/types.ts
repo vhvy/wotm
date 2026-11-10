@@ -12,15 +12,25 @@ export type Host = {
   port: number;
   username: string;
   auth: { mode: "key" | "password_prompt"; key_id?: string };
+  proxy_id?: string;
   trusted_host_key?: string;
   group?: string;
   remark?: string;
+};
+export type SOCKSProxy = {
+  id: string;
+  name: string;
+  address: string;
+  port: number;
+  username?: string;
+  has_password: boolean;
 };
 export type Snapshot = {
   revision: string;
   load_error: string;
   username: string;
   keys: SSHKey[];
+  proxies: SOCKSProxy[];
   hosts: Host[];
   version: string;
 };

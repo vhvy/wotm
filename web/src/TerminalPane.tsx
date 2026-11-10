@@ -293,7 +293,7 @@ export function TerminalPane({
         <code>
           {host.username}@{host.address}:{host.port}
         </code>
-        <span>SSH / xterm-256color</span>
+        <span>{host.proxy_id ? "SOCKS5 · " : ""}SSH / xterm-256color</span>
       </div>
       <div className="terminal-workarea">
         <div className="terminal-surface" ref={container} />
